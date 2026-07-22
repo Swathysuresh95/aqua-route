@@ -10,11 +10,42 @@ class BlueSpaceFeature {
   final String type;
   final LatLng navigationPoint;
 
+  /// Complete geometry of the selected feature.
+  ///
+  /// For rivers, canals and streams, this contains the waterway line.
+  /// For lakes and ponds, this contains the outer polygon boundary.
+  final List<LatLng> routePoints;
+
   const BlueSpaceFeature({
     required this.name,
     required this.type,
     required this.navigationPoint,
+    this.routePoints = const [],
   });
+
+  BlueSpaceFeature copyWith({
+    String? name,
+    String? type,
+    LatLng? navigationPoint,
+    List<LatLng>? routePoints,
+  }) {
+    return BlueSpaceFeature(
+      name: name ?? this.name,
+      type: type ?? this.type,
+      navigationPoint:
+          navigationPoint ?? this.navigationPoint,
+      routePoints: routePoints ?? this.routePoints,
+    );
+  }
+
+  bool get isWaterway {
+    final normalisedType = type.toLowerCase();
+
+    return normalisedType == 'river' ||
+        normalisedType == 'stream' ||
+        normalisedType == 'canal' ||
+        normalisedType == 'waterway';
+  }
 }
 
 class BlueSpaceData {
@@ -35,12 +66,16 @@ class BlueSpaceService {
       "BBOX(way,8.25,48.90,8.60,49.15,'EPSG:4326')";
 
   static Future<BlueSpaceData> fetchBlueSpaces() async {
-    final waterPolygons = await _fetchWaterPolygons();
-    final waterways = await _fetchWaterways();
+    final results = await Future.wait<dynamic>([
+      _fetchWaterPolygons(),
+      _fetchWaterways(),
+    ]);
 
     return BlueSpaceData(
-      waterPolygons: waterPolygons,
-      waterways: waterways,
+      waterPolygons:
+          results[0] as List<Polygon<BlueSpaceFeature>>,
+      waterways:
+          results[1] as List<Polyline<BlueSpaceFeature>>,
     );
   }
 
@@ -119,19 +154,19 @@ class BlueSpaceService {
 
       if (geometryType == 'MultiPolygon' &&
           coordinates is List<dynamic>) {
-        for (final polygonCoordinates
-            in coordinates) {
+        for (final polygonCoordinates in coordinates) {
           if (polygonCoordinates
-              is List<dynamic>) {
-            polygons.addAll(
-              _createWaterPolygons(
-                coordinates:
-                    polygonCoordinates,
-                name: name,
-                type: type,
-              ),
-            );
+              is! List<dynamic>) {
+            continue;
           }
+
+          polygons.addAll(
+            _createWaterPolygons(
+              coordinates: polygonCoordinates,
+              name: name,
+              type: type,
+            ),
+          );
         }
       }
     }
@@ -167,14 +202,14 @@ class BlueSpaceService {
       type: type,
       navigationPoint:
           _representativePoint(points),
+      routePoints: List<LatLng>.unmodifiable(points),
     );
 
     return [
       Polygon<BlueSpaceFeature>(
         points: points,
         color: const Color(0x6600A8E8),
-        borderColor:
-            const Color(0xFF005F99),
+        borderColor: const Color(0xFF005F99),
         borderStrokeWidth: 2.5,
         hitValue: feature,
       ),
@@ -240,9 +275,8 @@ class BlueSpaceService {
       final geometryType = geometry['type'];
       final coordinates = geometry['coordinates'];
 
-      final type = _waterwayType(
-        properties['waterway'],
-      );
+      final type =
+          _waterwayType(properties['waterway']);
 
       final name = _readName(
         properties,
@@ -264,8 +298,7 @@ class BlueSpaceService {
 
       if (geometryType == 'MultiLineString' &&
           coordinates is List<dynamic>) {
-        for (final lineCoordinates
-            in coordinates) {
+        for (final lineCoordinates in coordinates) {
           if (lineCoordinates
               is! List<dynamic>) {
             continue;
@@ -305,6 +338,7 @@ class BlueSpaceService {
       type: type,
       navigationPoint:
           _representativePoint(points),
+      routePoints: List<LatLng>.unmodifiable(points),
     );
 
     return Polyline<BlueSpaceFeature>(
@@ -319,11 +353,18 @@ class BlueSpaceService {
     Map<String, dynamic> properties, {
     required String fallback,
   }) {
-    final value = properties['name'];
+    final possibleNames = [
+      properties['name'],
+      properties['name:de'],
+      properties['official_name'],
+      properties['alt_name'],
+    ];
 
-    if (value is String &&
-        value.trim().isNotEmpty) {
-      return value.trim();
+    for (final value in possibleNames) {
+      if (value is String &&
+          value.trim().isNotEmpty) {
+        return value.trim();
+      }
     }
 
     return fallback;
@@ -332,7 +373,21 @@ class BlueSpaceService {
   static String _waterAreaType(
     Map<String, dynamic> properties,
   ) {
+    final water = properties['water'];
     final landuse = properties['landuse'];
+
+    if (water is String) {
+      switch (water.toLowerCase()) {
+        case 'lake':
+          return 'Lake';
+        case 'pond':
+          return 'Pond';
+        case 'reservoir':
+          return 'Reservoir';
+        case 'basin':
+          return 'Water basin';
+      }
+    }
 
     if (landuse is String) {
       switch (landuse.toLowerCase()) {
@@ -346,9 +401,7 @@ class BlueSpaceService {
     return 'Water area';
   }
 
-  static String _waterwayType(
-    dynamic value,
-  ) {
+  static String _waterwayType(dynamic value) {
     if (value is! String) {
       return 'Waterway';
     }

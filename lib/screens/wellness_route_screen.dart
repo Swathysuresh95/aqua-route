@@ -16,7 +16,8 @@ class WellnessRouteScreen extends StatefulWidget {
       _WellnessRouteScreenState();
 }
 
-class _WellnessRouteScreenState extends State<WellnessRouteScreen> {
+class _WellnessRouteScreenState
+    extends State<WellnessRouteScreen> {
   int _selectedDuration = 30;
   String _routeType = 'Circular';
   bool _drinkingWaterRequired = true;
@@ -26,16 +27,27 @@ class _WellnessRouteScreenState extends State<WellnessRouteScreen> {
   bool _isCreatingRoute = false;
   String? _statusMessage;
 
-  double get _maximumRouteDistanceMetres {
+  double get _maximumDestinationDistanceMetres {
+    if (_routeType == 'Circular') {
+      switch (_selectedDuration) {
+        case 15:
+          return 550;
+        case 30:
+          return 1100;
+        case 45:
+          return 1700;
+      }
+    }
+
     switch (_selectedDuration) {
       case 15:
-        return 1250;
+        return 1000;
       case 30:
-        return 2500;
+        return 2000;
       case 45:
-        return 3750;
+        return 3000;
       default:
-        return 2500;
+        return 2000;
     }
   }
 
@@ -43,25 +55,23 @@ class _WellnessRouteScreenState extends State<WellnessRouteScreen> {
     if (_routeType == 'Circular') {
       switch (_selectedDuration) {
         case 15:
-          return 350;
+          return 300;
         case 30:
-          return 700;
+          return 650;
         case 45:
-          return 1100;
-        default:
-          return 700;
+          return 1000;
       }
     }
 
     switch (_selectedDuration) {
       case 15:
-        return 750;
+        return 700;
       case 30:
-        return 1500;
+        return 1400;
       case 45:
-        return 2300;
+        return 2200;
       default:
-        return 1500;
+        return 1400;
     }
   }
 
@@ -77,104 +87,52 @@ class _WellnessRouteScreenState extends State<WellnessRouteScreen> {
     );
   }
 
-  WaterPoint? _findBestWaterPoint({
-    required LatLng currentLocation,
-    required List<WaterPoint> waterPoints,
-    required BlueSpaceFeature selectedBlueSpace,
+  int _nearestPointIndex({
+    required LatLng origin,
+    required List<LatLng> points,
   }) {
-    if (waterPoints.isEmpty) {
-      return null;
+    if (points.isEmpty) {
+      return -1;
     }
 
-    WaterPoint? bestPoint;
-    double? bestScore;
+    int nearestIndex = 0;
+    double shortestDistance = double.infinity;
 
-    for (final point in waterPoints) {
-      final distanceFromUser = _distanceBetween(
-        currentLocation,
-        point.location,
-      );
-
-      final distanceFromBlueSpace = _distanceBetween(
-        selectedBlueSpace.navigationPoint,
-        point.location,
-      );
-
-      if (distanceFromUser >
-          _maximumRouteDistanceMetres * 1.1) {
-        continue;
-      }
-
-      double score;
-
-      if (_routeType == 'Circular') {
-        score =
-            (distanceFromUser * 0.4) +
-            (distanceFromBlueSpace * 0.6);
-      } else {
-        score =
-            (distanceFromUser * 0.45) +
-            (distanceFromBlueSpace * 0.55);
-      }
-
-      if (bestScore == null || score < bestScore) {
-        bestScore = score;
-        bestPoint = point;
-      }
-    }
-
-    return bestPoint;
-  }
-
-  double _nearestGreenSpaceDistance({
-    required BlueSpaceFeature blueSpace,
-    required List<GreenSpaceFeature> greenSpaces,
-  }) {
-    if (greenSpaces.isEmpty) {
-      return double.infinity;
-    }
-
-    double nearestDistance = double.infinity;
-
-    for (final greenSpace in greenSpaces) {
+    for (int index = 0;
+        index < points.length;
+        index++) {
       final distance = _distanceBetween(
-        blueSpace.navigationPoint,
-        greenSpace.navigationPoint,
+        origin,
+        points[index],
       );
 
-      if (distance < nearestDistance) {
-        nearestDistance = distance;
-      }
-    }
-
-    return nearestDistance;
-  }
-
-  GreenSpaceFeature? _findNearestGreenSpace({
-    required BlueSpaceFeature blueSpace,
-    required List<GreenSpaceFeature> greenSpaces,
-  }) {
-    if (greenSpaces.isEmpty) {
-      return null;
-    }
-
-    GreenSpaceFeature? nearestGreenSpace;
-    double? shortestDistance;
-
-    for (final greenSpace in greenSpaces) {
-      final distance = _distanceBetween(
-        blueSpace.navigationPoint,
-        greenSpace.navigationPoint,
-      );
-
-      if (shortestDistance == null ||
-          distance < shortestDistance) {
+      if (distance < shortestDistance) {
         shortestDistance = distance;
-        nearestGreenSpace = greenSpace;
+        nearestIndex = index;
       }
     }
 
-    return nearestGreenSpace;
+    return nearestIndex;
+  }
+
+  LatLng _nearestPointOnFeature({
+    required LatLng origin,
+    required BlueSpaceFeature feature,
+  }) {
+    if (feature.routePoints.isEmpty) {
+      return feature.navigationPoint;
+    }
+
+    final index = _nearestPointIndex(
+      origin: origin,
+      points: feature.routePoints,
+    );
+
+    if (index < 0) {
+      return feature.navigationPoint;
+    }
+
+    return feature.routePoints[index];
   }
 
   BlueSpaceFeature? _findBestBlueSpace({
@@ -186,7 +144,8 @@ class _WellnessRouteScreenState extends State<WellnessRouteScreen> {
 
     if (_blueSpacePreference == 'Water Area' ||
         _blueSpacePreference == 'Any blue space') {
-      for (final polygon in blueSpaceData.waterPolygons) {
+      for (final polygon
+          in blueSpaceData.waterPolygons) {
         final feature = polygon.hitValue;
 
         if (feature != null) {
@@ -197,7 +156,8 @@ class _WellnessRouteScreenState extends State<WellnessRouteScreen> {
 
     if (_blueSpacePreference == 'River / Canal' ||
         _blueSpacePreference == 'Any blue space') {
-      for (final polyline in blueSpaceData.waterways) {
+      for (final polyline
+          in blueSpaceData.waterways) {
         final feature = polyline.hitValue;
 
         if (feature != null) {
@@ -211,16 +171,26 @@ class _WellnessRouteScreenState extends State<WellnessRouteScreen> {
     }
 
     BlueSpaceFeature? bestFeature;
-    double? bestScore;
+    double bestScore = double.infinity;
 
-    for (final feature in candidates) {
+    for (final originalFeature in candidates) {
+      final nearestPoint =
+          _nearestPointOnFeature(
+        origin: currentLocation,
+        feature: originalFeature,
+      );
+
+      final feature = originalFeature.copyWith(
+        navigationPoint: nearestPoint,
+      );
+
       final distanceFromUser = _distanceBetween(
         currentLocation,
-        feature.navigationPoint,
+        nearestPoint,
       );
 
       if (distanceFromUser >
-          _maximumRouteDistanceMetres * 1.2) {
+          _maximumDestinationDistanceMetres) {
         continue;
       }
 
@@ -229,17 +199,18 @@ class _WellnessRouteScreenState extends State<WellnessRouteScreen> {
                   _preferredDestinationDistanceMetres)
               .abs();
 
-      if (_preferGreenAreas && greenSpaces.isNotEmpty) {
+      if (_preferGreenAreas &&
+          greenSpaces.isNotEmpty) {
         final greenDistance =
             _nearestGreenSpaceDistance(
-          blueSpace: feature,
+          point: nearestPoint,
           greenSpaces: greenSpaces,
         );
 
-        score += greenDistance * 0.25;
+        score += greenDistance * 0.20;
       }
 
-      if (bestScore == null || score < bestScore) {
+      if (score < bestScore) {
         bestScore = score;
         bestFeature = feature;
       }
@@ -249,24 +220,111 @@ class _WellnessRouteScreenState extends State<WellnessRouteScreen> {
       return bestFeature;
     }
 
-    for (final feature in candidates) {
-      final distanceFromUser = _distanceBetween(
-        currentLocation,
-        feature.navigationPoint,
+    // Fallback: select the nearest matching feature,
+    // even if no feature is within the preferred distance.
+    double nearestDistance = double.infinity;
+
+    for (final originalFeature in candidates) {
+      final nearestPoint =
+          _nearestPointOnFeature(
+        origin: currentLocation,
+        feature: originalFeature,
       );
 
-      final score =
-          (distanceFromUser -
-                  _preferredDestinationDistanceMetres)
-              .abs();
+      final distance = _distanceBetween(
+        currentLocation,
+        nearestPoint,
+      );
 
-      if (bestScore == null || score < bestScore) {
-        bestScore = score;
-        bestFeature = feature;
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        bestFeature = originalFeature.copyWith(
+          navigationPoint: nearestPoint,
+        );
       }
     }
 
     return bestFeature;
+  }
+
+  double _nearestGreenSpaceDistance({
+    required LatLng point,
+    required List<GreenSpaceFeature> greenSpaces,
+  }) {
+    double nearestDistance = double.infinity;
+
+    for (final greenSpace in greenSpaces) {
+      final distance = _distanceBetween(
+        point,
+        greenSpace.navigationPoint,
+      );
+
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+      }
+    }
+
+    return nearestDistance;
+  }
+
+  GreenSpaceFeature? _findNearestGreenSpace({
+    required LatLng point,
+    required List<GreenSpaceFeature> greenSpaces,
+  }) {
+    GreenSpaceFeature? nearestGreenSpace;
+    double shortestDistance = double.infinity;
+
+    for (final greenSpace in greenSpaces) {
+      final distance = _distanceBetween(
+        point,
+        greenSpace.navigationPoint,
+      );
+
+      if (distance < shortestDistance) {
+        shortestDistance = distance;
+        nearestGreenSpace = greenSpace;
+      }
+    }
+
+    return nearestGreenSpace;
+  }
+
+  WaterPoint? _findBestWaterPoint({
+    required LatLng currentLocation,
+    required List<WaterPoint> waterPoints,
+    required BlueSpaceFeature selectedBlueSpace,
+  }) {
+    WaterPoint? bestPoint;
+    double bestScore = double.infinity;
+
+    for (final point in waterPoints) {
+      final distanceFromUser = _distanceBetween(
+        currentLocation,
+        point.location,
+      );
+
+      final distanceFromBlueSpace =
+          _distanceBetween(
+        point.location,
+        selectedBlueSpace.navigationPoint,
+      );
+
+      if (distanceFromUser >
+          _maximumDestinationDistanceMetres * 1.3) {
+        continue;
+      }
+
+      final score =
+          (distanceFromUser * 0.35) +
+          (distanceFromBlueSpace * 0.65);
+
+      if (score < bestScore) {
+        bestScore = score;
+        bestPoint = point;
+      }
+    }
+
+    return bestPoint;
   }
 
   bool _shouldIncludeOptionalWaterPoint({
@@ -286,20 +344,118 @@ class _WellnessRouteScreenState extends State<WellnessRouteScreen> {
 
     switch (_selectedDuration) {
       case 15:
-        return distanceToBlueSpace <= 200 &&
-            distanceFromUser <= 700;
+        return distanceToBlueSpace <= 180 &&
+            distanceFromUser <= 650;
 
       case 30:
-        return distanceToBlueSpace <= 450 &&
-            distanceFromUser <= 1500;
+        return distanceToBlueSpace <= 350 &&
+            distanceFromUser <= 1400;
 
       case 45:
-        return distanceToBlueSpace <= 700 &&
-            distanceFromUser <= 2500;
+        return distanceToBlueSpace <= 600 &&
+            distanceFromUser <= 2300;
 
       default:
         return false;
     }
+  }
+
+  List<LatLng> _createWaterwayRoutePoints({
+    required LatLng origin,
+    required BlueSpaceFeature blueSpace,
+  }) {
+    final geometry = blueSpace.routePoints;
+
+    if (!blueSpace.isWaterway ||
+        geometry.length < 3) {
+      return [blueSpace.navigationPoint];
+    }
+
+    final nearestIndex = _nearestPointIndex(
+      origin: origin,
+      points: geometry,
+    );
+
+    if (nearestIndex < 0) {
+      return [blueSpace.navigationPoint];
+    }
+
+    final remainingForward =
+        geometry.length - 1 - nearestIndex;
+    final remainingBackward = nearestIndex;
+
+    final direction =
+        remainingForward >= remainingBackward
+            ? 1
+            : -1;
+
+    final availablePointCount = direction == 1
+        ? remainingForward
+        : remainingBackward;
+
+    if (availablePointCount <= 1) {
+      return [geometry[nearestIndex]];
+    }
+
+    int numberOfWaterwayStops;
+
+    switch (_selectedDuration) {
+      case 15:
+        numberOfWaterwayStops = 2;
+        break;
+      case 30:
+      case 45:
+        numberOfWaterwayStops = 3;
+        break;
+      default:
+        numberOfWaterwayStops = 2;
+    }
+
+    numberOfWaterwayStops =
+        numberOfWaterwayStops.clamp(
+      1,
+      availablePointCount,
+    );
+
+    final sampledPoints = <LatLng>[];
+
+    for (int stop = 0;
+        stop < numberOfWaterwayStops;
+        stop++) {
+      final fraction =
+          (stop + 1) / numberOfWaterwayStops;
+
+      final offset =
+          (availablePointCount * fraction)
+              .round()
+              .clamp(1, availablePointCount);
+
+      final index =
+          nearestIndex + (direction * offset);
+
+      final point = geometry[index];
+
+      if (sampledPoints.isEmpty ||
+          _distanceBetween(
+                sampledPoints.last,
+                point,
+              ) >
+              20) {
+        sampledPoints.add(point);
+      }
+    }
+
+    if (sampledPoints.isEmpty) {
+      sampledPoints.add(
+        blueSpace.navigationPoint,
+      );
+    }
+
+    return sampledPoints;
+  }
+
+  String _coordinateText(LatLng point) {
+    return '${point.latitude},${point.longitude}';
   }
 
   Future<void> _openGoogleMapsRoute({
@@ -307,42 +463,77 @@ class _WellnessRouteScreenState extends State<WellnessRouteScreen> {
     required BlueSpaceFeature blueSpace,
     WaterPoint? waterPoint,
   }) async {
-    final originText =
-        '${origin.latitude},${origin.longitude}';
+    final routeWaypoints = <LatLng>[];
 
-    final blueSpaceText =
-        '${blueSpace.navigationPoint.latitude},'
-        '${blueSpace.navigationPoint.longitude}';
+    if (waterPoint != null) {
+      routeWaypoints.add(waterPoint.location);
+    }
+
+    if (blueSpace.isWaterway) {
+      routeWaypoints.addAll(
+        _createWaterwayRoutePoints(
+          origin: origin,
+          blueSpace: blueSpace,
+        ),
+      );
+    } else {
+      routeWaypoints.add(
+        blueSpace.navigationPoint,
+      );
+    }
+
+    // Prevent accidental duplicate points.
+    final uniqueWaypoints = <LatLng>[];
+
+    for (final point in routeWaypoints) {
+      final alreadyIncluded =
+          uniqueWaypoints.any(
+        (existing) =>
+            _distanceBetween(existing, point) < 15,
+      );
+
+      if (!alreadyIncluded) {
+        uniqueWaypoints.add(point);
+      }
+    }
 
     final queryParameters = <String, String>{
       'api': '1',
-      'origin': originText,
+      'origin': _coordinateText(origin),
       'travelmode': 'walking',
     };
 
     if (_routeType == 'Circular') {
-      queryParameters['destination'] = originText;
+      queryParameters['destination'] =
+          _coordinateText(origin);
 
-      final waypoints = <String>[];
-
-      if (waterPoint != null) {
-        waypoints.add(
-          '${waterPoint.location.latitude},'
-          '${waterPoint.location.longitude}',
-        );
-      }
-
-      waypoints.add(blueSpaceText);
-
-      queryParameters['waypoints'] =
-          waypoints.join('|');
-    } else {
-      queryParameters['destination'] = blueSpaceText;
-
-      if (waterPoint != null) {
+      if (uniqueWaypoints.isNotEmpty) {
         queryParameters['waypoints'] =
-            '${waterPoint.location.latitude},'
-            '${waterPoint.location.longitude}';
+            uniqueWaypoints
+                .map(_coordinateText)
+                .join('|');
+      }
+    } else {
+      if (uniqueWaypoints.isEmpty) {
+        queryParameters['destination'] =
+            _coordinateText(
+          blueSpace.navigationPoint,
+        );
+      } else {
+        queryParameters['destination'] =
+            _coordinateText(
+          uniqueWaypoints.last,
+        );
+
+        if (uniqueWaypoints.length > 1) {
+          queryParameters['waypoints'] =
+              uniqueWaypoints
+                  .take(
+                    uniqueWaypoints.length - 1,
+                  )
+                  .map(_coordinateText)
+                  .join('|');
+        }
       }
     }
 
@@ -357,7 +548,7 @@ class _WellnessRouteScreenState extends State<WellnessRouteScreen> {
       mode: LaunchMode.externalApplication,
     );
 
-    if (!opened && mounted) {
+    if (!opened) {
       throw Exception(
         'Google Maps could not be opened.',
       );
@@ -388,7 +579,7 @@ class _WellnessRouteScreenState extends State<WellnessRouteScreen> {
 
       setState(() {
         _statusMessage =
-            'Loading water and green-space data...';
+            'Loading mapped water and green spaces...';
       });
 
       final results = await Future.wait<dynamic>([
@@ -410,7 +601,7 @@ class _WellnessRouteScreenState extends State<WellnessRouteScreen> {
 
       setState(() {
         _statusMessage =
-            'Selecting a suitable wellness route...';
+            'Selecting a suitable route...';
       });
 
       final selectedBlueSpace =
@@ -422,7 +613,7 @@ class _WellnessRouteScreenState extends State<WellnessRouteScreen> {
 
       if (selectedBlueSpace == null) {
         throw Exception(
-          'No suitable blue-space feature was found.',
+          'No matching blue space was found.',
         );
       }
 
@@ -438,33 +629,41 @@ class _WellnessRouteScreenState extends State<WellnessRouteScreen> {
       if (_drinkingWaterRequired) {
         if (candidateWaterPoint == null) {
           throw Exception(
-            'No suitable drinking-water point was found near this route.',
+            'No suitable drinking-water point '
+            'was found near this route.',
           );
         }
 
         selectedWaterPoint = candidateWaterPoint;
       } else if (candidateWaterPoint != null) {
-        final shouldInclude =
-            _shouldIncludeOptionalWaterPoint(
+        if (_shouldIncludeOptionalWaterPoint(
           waterPoint: candidateWaterPoint,
           blueSpace: selectedBlueSpace,
           currentLocation: currentLocation,
-        );
-
-        if (shouldInclude) {
+        )) {
           selectedWaterPoint = candidateWaterPoint;
         }
       }
 
       GreenSpaceFeature? nearbyGreenSpace;
 
-      if (_preferGreenAreas && greenSpaces.isNotEmpty) {
+      if (_preferGreenAreas &&
+          greenSpaces.isNotEmpty) {
         nearbyGreenSpace =
             _findNearestGreenSpace(
-          blueSpace: selectedBlueSpace,
+          point:
+              selectedBlueSpace.navigationPoint,
           greenSpaces: greenSpaces,
         );
       }
+
+      final waterwayRoutePoints =
+          selectedBlueSpace.isWaterway
+              ? _createWaterwayRoutePoints(
+                  origin: currentLocation,
+                  blueSpace: selectedBlueSpace,
+                )
+              : <LatLng>[];
 
       if (!mounted) return;
 
@@ -477,15 +676,26 @@ class _WellnessRouteScreenState extends State<WellnessRouteScreen> {
       final waterDescription =
           selectedWaterPoint == null
               ? 'No drinking-water stop included'
-              : 'Drinking-water stop: '
+              : 'Drinking-water stop:\n'
                   '${selectedWaterPoint.name}';
 
       final greenDescription =
           nearbyGreenSpace == null
               ? 'No nearby mapped green space found'
-              : 'Nearby greenery: '
+              : 'Nearby greenery:\n'
                   '${nearbyGreenSpace.name} '
                   '(${nearbyGreenSpace.type})';
+
+      final routeExplanation =
+          selectedBlueSpace.isWaterway
+              ? 'AquaRoute selected the nearest section '
+                  'of this ${selectedBlueSpace.type.toLowerCase()} '
+                  'and will send '
+                  '${waterwayRoutePoints.length} waterway '
+                  'points to Google Maps. This encourages '
+                  'the route to follow the mapped waterway.'
+              : 'AquaRoute selected the nearest suitable '
+                  'point associated with this water area.';
 
       final shouldOpen = await showDialog<bool>(
         context: context,
@@ -494,23 +704,28 @@ class _WellnessRouteScreenState extends State<WellnessRouteScreen> {
             title: const Text(
               'Wellness route ready',
             ),
-            content: Text(
-              'Preferred duration: '
-              '$_selectedDuration minutes\n'
-              'Route type: $_routeType\n\n'
-              'Blue-space destination:\n'
-              '${selectedBlueSpace.name}\n'
-              '${selectedBlueSpace.type}\n'
-              'Straight-line distance: '
-              '${_formatDistance(blueSpaceDistance)}\n\n'
-              '$waterDescription\n\n'
-              '$greenDescription\n\n'
-              'Greenery is used to select the blue-space '
-              'destination and is not added as a separate '
-              'route stop.\n\n'
-              'Google Maps calculates the actual walking '
-              'route and travel time. The result may differ '
-              'from the preferred duration.',
+            content: SingleChildScrollView(
+              child: Text(
+                'Preferred duration: '
+                '$_selectedDuration minutes\n'
+                'Route type: $_routeType\n\n'
+                'Selected blue space:\n'
+                '${selectedBlueSpace.name}\n'
+                '${selectedBlueSpace.type}\n'
+                'Distance to nearest section: '
+                '${_formatDistance(blueSpaceDistance)}\n\n'
+                '$waterDescription\n\n'
+                '$greenDescription\n\n'
+                '$routeExplanation\n\n'
+                'Google Maps calculates the final '
+                'pedestrian route using recognised '
+                'walkable paths. It may adjust the route '
+                'when a waterway does not have a continuous '
+                'walking path beside it.\n\n'
+                'Google Maps may display coordinate-based '
+                'locations as “Dropped pin”, but the actual '
+                'OSM feature names are shown here.',
+              ),
             ),
             actions: [
               TextButton(
@@ -549,7 +764,7 @@ class _WellnessRouteScreenState extends State<WellnessRouteScreen> {
 
       setState(() {
         _statusMessage =
-            'Opening the walking route...';
+            'Opening Google Maps...';
       });
 
       await _openGoogleMapsRoute(
@@ -657,7 +872,6 @@ class _WellnessRouteScreenState extends State<WellnessRouteScreen> {
                 color: Color(0xFF00B4D8),
               ),
               const SizedBox(height: 12),
-
               const Text(
                 'Personalised Hydration and '
                 'Blue-Space Wellness Walk',
@@ -668,24 +882,21 @@ class _WellnessRouteScreenState extends State<WellnessRouteScreen> {
                   color: Color(0xFF023E8A),
                 ),
               ),
-
               const SizedBox(height: 10),
-
               const Text(
-                'Choose your preferences. AquaRoute '
-                'selects a suitable blue-space destination '
-                'and includes drinking water when requested.',
+                'Choose your walking preferences. '
+                'For rivers and canals, AquaRoute uses '
+                'several points from the mapped waterway '
+                'to encourage a route beside the water.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 15,
                   color: Colors.black54,
                 ),
               ),
-
               _sectionTitle(
                 'Preferred walking duration',
               ),
-
               Row(
                 children: [
                   _durationButton(15),
@@ -693,9 +904,7 @@ class _WellnessRouteScreenState extends State<WellnessRouteScreen> {
                   _durationButton(45),
                 ],
               ),
-
               _sectionTitle('Route type'),
-
               SegmentedButton<String>(
                 segments: const [
                   ButtonSegment<String>(
@@ -714,19 +923,17 @@ class _WellnessRouteScreenState extends State<WellnessRouteScreen> {
                 selected: {_routeType},
                 onSelectionChanged:
                     _isCreatingRoute
-                    ? null
-                    : (selection) {
-                        setState(() {
-                          _routeType =
-                              selection.first;
-                        });
-                      },
+                        ? null
+                        : (selection) {
+                            setState(() {
+                              _routeType =
+                                  selection.first;
+                            });
+                          },
               ),
-
               _sectionTitle(
                 'Drinking-water stop',
               ),
-
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text(
@@ -747,11 +954,9 @@ class _WellnessRouteScreenState extends State<WellnessRouteScreen> {
                         });
                       },
               ),
-
               _sectionTitle(
                 'Preferred blue-space type',
               ),
-
               DropdownButtonFormField<String>(
                 initialValue:
                     _blueSpacePreference,
@@ -771,7 +976,7 @@ class _WellnessRouteScreenState extends State<WellnessRouteScreen> {
                   DropdownMenuItem<String>(
                     value: 'River / Canal',
                     child: Text(
-                      'River / Canal',
+                      'River / Stream / Canal',
                     ),
                   ),
                   DropdownMenuItem<String>(
@@ -794,19 +999,18 @@ class _WellnessRouteScreenState extends State<WellnessRouteScreen> {
                         });
                       },
               ),
-
               _sectionTitle(
                 'Green-space preference',
               ),
-
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text(
                   'Prefer blue spaces near greenery',
                 ),
                 subtitle: const Text(
-                  'This helps choose the destination. '
-                  'A park is not added as a separate route stop.',
+                  'Green-space proximity helps select '
+                  'the destination. A park is not added '
+                  'as a separate route stop.',
                 ),
                 value: _preferGreenAreas,
                 onChanged: _isCreatingRoute
@@ -817,9 +1021,7 @@ class _WellnessRouteScreenState extends State<WellnessRouteScreen> {
                         });
                       },
               ),
-
               const SizedBox(height: 28),
-
               ElevatedButton.icon(
                 onPressed: _isCreatingRoute
                     ? null
@@ -860,7 +1062,6 @@ class _WellnessRouteScreenState extends State<WellnessRouteScreen> {
                       const Color(0xFF7CB7D4),
                 ),
               ),
-
               if (_statusMessage != null) ...[
                 const SizedBox(height: 14),
                 Text(
@@ -872,9 +1073,7 @@ class _WellnessRouteScreenState extends State<WellnessRouteScreen> {
                   ),
                 ),
               ],
-
               const SizedBox(height: 15),
-
               const Card(
                 child: Padding(
                   padding: EdgeInsets.all(14),
@@ -890,9 +1089,10 @@ class _WellnessRouteScreenState extends State<WellnessRouteScreen> {
                       Expanded(
                         child: Text(
                           'The selected duration is a preference. '
-                          'AquaRoute uses straight-line distances '
-                          'to select nearby locations. Google Maps '
-                          'calculates the actual walking route and time.',
+                          'AquaRoute selects mapped locations using '
+                          'straight-line distances. Google Maps then '
+                          'calculates the final route using available '
+                          'pedestrian paths.',
                         ),
                       ),
                     ],
