@@ -10,10 +10,11 @@ class BlueSpaceFeature {
   final String type;
   final LatLng navigationPoint;
 
-  /// Complete geometry of the selected feature.
+  /// Full geometry of the feature.
   ///
-  /// For rivers, canals and streams, this contains the waterway line.
-  /// For lakes and ponds, this contains the outer polygon boundary.
+  /// For rivers, streams and canals, this contains the complete line.
+  /// For lakes, ponds, reservoirs and basins, this contains the polygon
+  /// boundary.
   final List<LatLng> routePoints;
 
   const BlueSpaceFeature({
@@ -32,8 +33,7 @@ class BlueSpaceFeature {
     return BlueSpaceFeature(
       name: name ?? this.name,
       type: type ?? this.type,
-      navigationPoint:
-          navigationPoint ?? this.navigationPoint,
+      navigationPoint: navigationPoint ?? this.navigationPoint,
       routePoints: routePoints ?? this.routePoints,
     );
   }
@@ -87,8 +87,7 @@ class BlueSpaceService {
         'version': '2.0.0',
         'request': 'GetFeature',
         'typeNames': 'mobilegis:planet_osm_polygon',
-        'CQL_FILTER':
-            "natural='water' AND $_karlsruheBbox",
+        'CQL_FILTER': "natural='water' AND $_karlsruheBbox",
         'outputFormat': 'application/json',
         'srsName': 'EPSG:4326',
         'count': '5000',
@@ -136,6 +135,7 @@ class BlueSpaceService {
       final coordinates = geometry['coordinates'];
 
       final type = _waterAreaType(properties);
+
       final name = _readName(
         properties,
         fallback: type,
@@ -155,8 +155,7 @@ class BlueSpaceService {
       if (geometryType == 'MultiPolygon' &&
           coordinates is List<dynamic>) {
         for (final polygonCoordinates in coordinates) {
-          if (polygonCoordinates
-              is! List<dynamic>) {
+          if (polygonCoordinates is! List<dynamic>) {
             continue;
           }
 
@@ -200,8 +199,7 @@ class BlueSpaceService {
     final feature = BlueSpaceFeature(
       name: name,
       type: type,
-      navigationPoint:
-          _representativePoint(points),
+      navigationPoint: _representativePoint(points),
       routePoints: List<LatLng>.unmodifiable(points),
     );
 
@@ -299,8 +297,7 @@ class BlueSpaceService {
       if (geometryType == 'MultiLineString' &&
           coordinates is List<dynamic>) {
         for (final lineCoordinates in coordinates) {
-          if (lineCoordinates
-              is! List<dynamic>) {
+          if (lineCoordinates is! List<dynamic>) {
             continue;
           }
 
@@ -336,8 +333,7 @@ class BlueSpaceService {
     final feature = BlueSpaceFeature(
       name: name,
       type: type,
-      navigationPoint:
-          _representativePoint(points),
+      navigationPoint: _representativePoint(points),
       routePoints: List<LatLng>.unmodifiable(points),
     );
 
@@ -373,32 +369,163 @@ class BlueSpaceService {
   static String _waterAreaType(
     Map<String, dynamic> properties,
   ) {
-    final water = properties['water'];
-    final landuse = properties['landuse'];
+    final water =
+        properties['water']
+                ?.toString()
+                .trim()
+                .toLowerCase() ??
+            '';
 
-    if (water is String) {
-      switch (water.toLowerCase()) {
-        case 'lake':
-          return 'Lake';
-        case 'pond':
-          return 'Pond';
-        case 'reservoir':
-          return 'Reservoir';
-        case 'basin':
-          return 'Water basin';
-      }
+    final landuse =
+        properties['landuse']
+                ?.toString()
+                .trim()
+                .toLowerCase() ??
+            '';
+
+    final natural =
+        properties['natural']
+                ?.toString()
+                .trim()
+                .toLowerCase() ??
+            '';
+
+    final featureName = _combinedName(properties);
+
+    // Use the explicit OSM water subtype first.
+    switch (water) {
+      case 'lake':
+      case 'oxbow':
+        return 'Lake';
+
+      case 'pond':
+      case 'reflecting_pool':
+      case 'fishpond':
+        return 'Pond';
+
+      case 'reservoir':
+        return 'Reservoir';
+
+      case 'basin':
+        return 'Water basin';
     }
 
-    if (landuse is String) {
-      switch (landuse.toLowerCase()) {
-        case 'reservoir':
-          return 'Reservoir';
-        case 'basin':
-          return 'Water basin';
-      }
+    // Support alternative or older OSM land-use tags.
+    switch (landuse) {
+      case 'reservoir':
+        return 'Reservoir';
+
+      case 'basin':
+        return 'Water basin';
+    }
+
+    // Fallback classification based on German and English names.
+    //
+    // This allows a feature such as "Heidesee" to be classified
+    // as a Lake even when the GeoServer feature contains only
+    // natural=water and no water=lake attribute.
+    if (_containsAny(
+      featureName,
+      [
+        'heidesee',
+        'see',
+        'lake',
+        'baggersee',
+        'stausee',
+        'badesee',
+        'waldsee',
+        'silbersee',
+      ],
+    )) {
+      return 'Lake';
+    }
+
+    if (_containsAny(
+      featureName,
+      [
+        'teich',
+        'weiher',
+        'pond',
+        'fischteich',
+        'löschteich',
+        'loeschteich',
+      ],
+    )) {
+      return 'Pond';
+    }
+
+    if (_containsAny(
+      featureName,
+      [
+        'reservoir',
+        'speichersee',
+        'speicherbecken',
+        'staubecken',
+        'rückhaltebecken',
+        'rueckhaltebecken',
+        'regenrückhaltebecken',
+        'regenrueckhaltebecken',
+      ],
+    )) {
+      return 'Reservoir';
+    }
+
+    if (_containsAny(
+      featureName,
+      [
+        'becken',
+        'basin',
+        'klärbecken',
+        'klaerbecken',
+      ],
+    )) {
+      return 'Water basin';
+    }
+
+    // All remaining natural=water polygons are retained as
+    // general water areas.
+    if (natural == 'water') {
+      return 'Water area';
     }
 
     return 'Water area';
+  }
+
+  static String _combinedName(
+    Map<String, dynamic> properties,
+  ) {
+    final values = <dynamic>[
+      properties['name'],
+      properties['name:de'],
+      properties['official_name'],
+      properties['alt_name'],
+      properties['short_name'],
+      properties['loc_name'],
+    ];
+
+    final names = <String>[];
+
+    for (final value in values) {
+      if (value is String &&
+          value.trim().isNotEmpty) {
+        names.add(value.trim().toLowerCase());
+      }
+    }
+
+    return names.join(' ');
+  }
+
+  static bool _containsAny(
+    String text,
+    List<String> terms,
+  ) {
+    for (final term in terms) {
+      if (text.contains(term)) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   static String _waterwayType(dynamic value) {
@@ -409,10 +536,13 @@ class BlueSpaceService {
     switch (value.toLowerCase()) {
       case 'river':
         return 'River';
+
       case 'stream':
         return 'Stream';
+
       case 'canal':
         return 'Canal';
+
       default:
         return 'Waterway';
     }
